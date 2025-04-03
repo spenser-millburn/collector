@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -122,7 +123,7 @@ func (h *HealthMonitor) GetHealthStatus() model.HealthStatus {
 	// Check for error components
 	if statusCounts[model.StatusError] > 0 {
 		systemStatus = model.StatusError
-		statusMessage = "System has errors: " + string(statusCounts[model.StatusError]) + " components in ERROR state"
+		statusMessage = fmt.Sprintf("System has errors: %d components in ERROR state", statusCounts[model.StatusError])
 	} else if statusCounts[model.StatusStopped] > 0 && statusCounts[model.StatusStopped] == len(components) {
 		systemStatus = model.StatusStopped
 		statusMessage = "System is stopped"
@@ -130,7 +131,8 @@ func (h *HealthMonitor) GetHealthStatus() model.HealthStatus {
 		systemStatus = model.StatusInitialized
 		statusMessage = "System is initializing"
 	} else if statusCounts[model.StatusRunning] < len(components) {
-		statusMessage = "System is partially running: " + string(statusCounts[model.StatusRunning]) + " of " + string(len(components)) + " components running"
+		statusMessage = fmt.Sprintf("System is partially running: %d of %d components running", 
+			statusCounts[model.StatusRunning], len(components))
 	} else {
 		statusMessage = "System is healthy: all components running"
 	}
