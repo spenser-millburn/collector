@@ -195,7 +195,8 @@ func TestPipelineStageProcess(t *testing.T) {
 	t.Run("Empty result stops pipeline", func(t *testing.T) {
 		// First processor returns empty batch
 		filter := newMockProcessorPlugin("filter", "Filter", func(batch *model.DataBatch) *model.DataBatch {
-			return model.NewDataBatch(batch.BatchType)
+			emptyBatch := model.NewDataBatch(batch.BatchType)
+			return emptyBatch
 		})
 		
 		// Second processor should never be called
@@ -215,8 +216,10 @@ func TestPipelineStageProcess(t *testing.T) {
 		batch := createTestBatch(2)
 		result := firstStage.Process(batch)
 		
-		assert.NotNil(t, result)
-		assert.Equal(t, 0, result.Size())
+		assert.NotNil(t, result, "Result should not be nil")
+		if result != nil {
+			assert.Equal(t, 0, result.Size())
+		}
 		assert.False(t, secondCalled)
 	})
 }

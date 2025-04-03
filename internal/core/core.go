@@ -371,7 +371,7 @@ func (c *Core) PublishEvent(eventType model.EventType, sourceID string, data int
 // ProcessBatch processes a data batch through the pipeline
 func (c *Core) ProcessBatch(batch *model.DataBatch) *model.DataBatch {
 	if batch == nil || batch.Size() == 0 || c.pipeline == nil {
-		return batch
+		return nil
 	}
 	
 	c.PublishEvent(model.EventDataReceived, c.ID(), map[string]interface{}{
@@ -381,11 +381,14 @@ func (c *Core) ProcessBatch(batch *model.DataBatch) *model.DataBatch {
 	
 	processed := c.pipeline.Process(batch)
 	
-	if processed != nil && processed.Size() > 0 {
-		c.PublishEvent(model.EventDataProcessed, c.ID(), map[string]interface{}{
-			"batch_type": processed.BatchType,
-			"batch_size": processed.Size(),
-		})
+	// Check if processed is nil before accessing it
+	if processed != nil {
+		if processed.Size() > 0 {
+			c.PublishEvent(model.EventDataProcessed, c.ID(), map[string]interface{}{
+				"batch_type": processed.BatchType,
+				"batch_size": processed.Size(),
+			})
+		}
 	}
 	
 	return processed

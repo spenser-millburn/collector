@@ -100,8 +100,15 @@ func (b *EventBus) Publish(event Event) {
 	}
 
 	if subscribers, exists := b.subscribers[event.Type]; exists {
+		// Create a local copy of callbacks to avoid race conditions 
+		var callbacks []EventCallback
 		for _, callback := range subscribers {
-			go callback(event)
+			callbacks = append(callbacks, callback)
+		}
+		
+		// Call the callbacks outside the lock
+		for _, callback := range callbacks {
+			callback(event) // Direct call instead of goroutine
 		}
 	}
 }

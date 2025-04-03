@@ -264,40 +264,41 @@ func TestCoreProcessBatch(t *testing.T) {
 	
 	t.Run("ProcessBatch publishes events", func(t *testing.T) {
 		// Subscribe to events
-		var receivedReceived, receivedProcessed bool
-		var wg sync.WaitGroup
-		wg.Add(2)
+		receivedEvents := make(map[model.EventType]bool)
+		var mu sync.Mutex
 		
-		core.eventBus.Subscribe(model.EventDataReceived, "test", func(event Event) {
-			receivedReceived = true
-			wg.Done()
+		// Set up subscriptions
+		core.eventBus.Subscribe(model.EventDataReceived, "test_received", func(event Event) {
+			mu.Lock()
+			receivedEvents[event.Type] = true
+			mu.Unlock()
 		})
 		
-		core.eventBus.Subscribe(model.EventDataProcessed, "test", func(event Event) {
-			receivedProcessed = true
-			wg.Done()
+		core.eventBus.Subscribe(model.EventDataProcessed, "test_processed", func(event Event) {
+			mu.Lock()
+			receivedEvents[event.Type] = true
+			mu.Unlock()
 		})
 		
 		// Process a batch
 		result := core.ProcessBatch(batch)
 		assert.Equal(t, batch, result) // No processors registered, should return original
 		
-		// Wait for events with timeout
-		waitDone := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(waitDone)
-		}()
+		// Give time for event processing
+		time.Sleep(100 * time.Millisecond)
 		
-		select {
-		case <-waitDone:
-			// Continue with assertions
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("Timed out waiting for event notifications")
-		}
+		// Check that both events were received
+		mu.Lock()
+		receivedReceived := receivedEvents[model.EventDataReceived]
+		receivedProcessed := receivedEvents[model.EventDataProcessed]
+		mu.Unlock()
 		
-		assert.True(t, receivedReceived)
-		assert.True(t, receivedProcessed)
+		assert.True(t, receivedReceived, "DataReceived event was not received")
+		assert.True(t, receivedProcessed, "DataProcessed event was not received")
+		
+		// Clean up subscriptions
+		core.eventBus.Unsubscribe(model.EventDataReceived, "test_received")
+		core.eventBus.Unsubscribe(model.EventDataProcessed, "test_processed")
 	})
 	
 	t.Run("ProcessBatch uses pipeline", func(t *testing.T) {
@@ -343,33 +344,36 @@ func TestPublishEvent(t *testing.T) {
 	})
 	
 	t.Run("PublishEvent sends event to eventBus", func(t *testing.T) {
-		var receivedEvent Event
-		var wg sync.WaitGroup
-		wg.Add(1)
+		// Ensure the event bus is started
+		core.eventBus.Start()
 		
-		core.eventBus.Subscribe(model.EventError, "test", func(event Event) {
+		var receivedEvent Event
+		var eventReceived bool
+		var mu sync.Mutex
+		
+		core.eventBus.Subscribe(model.EventError, "test_error", func(event Event) {
+			mu.Lock()
 			receivedEvent = event
-			wg.Done()
+			eventReceived = true
+			mu.Unlock()
 		})
 		
 		core.PublishEvent(model.EventError, "source", "test_data")
 		
-		// Wait for event with timeout
-		waitDone := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(waitDone)
-		}()
+		// Give time for event processing
+		time.Sleep(100 * time.Millisecond)
 		
-		select {
-		case <-waitDone:
-			// Continue with assertions
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("Timed out waiting for event notification")
-		}
+		mu.Lock()
+		gotEvent := eventReceived
+		event := receivedEvent
+		mu.Unlock()
 		
-		assert.Equal(t, model.EventError, receivedEvent.Type)
-		assert.Equal(t, "source", receivedEvent.SourceID)
-		assert.Equal(t, "test_data", receivedEvent.Data)
+		assert.True(t, gotEvent, "Event was not received")
+		assert.Equal(t, model.EventError, event.Type)
+		assert.Equal(t, "source", event.SourceID)
+		assert.Equal(t, "test_data", event.Data)
+		
+		// Clean up subscription
+		core.eventBus.Unsubscribe(model.EventError, "test_error")
 	})
 }

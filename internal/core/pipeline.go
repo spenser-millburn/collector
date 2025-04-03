@@ -22,9 +22,14 @@ func (s *PipelineStage) Process(batch *model.DataBatch) *model.DataBatch {
 	// Process the batch
 	processed := s.Processor.Process(batch)
 	
-	// If the processor returns nil or the batch has no points, stop the pipeline
-	if processed == nil || processed.Size() == 0 {
-		return nil
+	// If the processor returns nil, create an empty batch with the same type
+	if processed == nil {
+		processed = model.NewDataBatch(batch.BatchType)
+	}
+
+	// If the batch has no points, stop the pipeline but return the empty batch
+	if processed.Size() == 0 {
+		return processed
 	}
 
 	// Pass to next stage if any

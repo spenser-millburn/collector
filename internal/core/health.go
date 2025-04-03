@@ -131,6 +131,7 @@ func (h *HealthMonitor) GetHealthStatus() model.HealthStatus {
 		systemStatus = model.StatusInitialized
 		statusMessage = "System is initializing"
 	} else if statusCounts[model.StatusRunning] < len(components) {
+		systemStatus = model.StatusInitialized
 		statusMessage = fmt.Sprintf("System is partially running: %d of %d components running", 
 			statusCounts[model.StatusRunning], len(components))
 	} else {
