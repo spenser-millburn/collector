@@ -39,6 +39,9 @@ go build -o collector ./cmd/collector
 # Process a specific input file and output to stdout
 ./collector --input-file /path/to/logfile.log --stdout
 
+# Use Docker Compose configuration for collecting logs from Docker services
+./collector --config config/docker-compose.json
+
 # Output in JSON format
 ./collector --stdout --json
 
@@ -139,6 +142,44 @@ The collector uses a JSON configuration file with the following structure:
     }
   }
 }
+```
+
+### Docker Compose Input Plugin
+
+The Docker Compose input plugin collects logs from Docker Compose services:
+
+```json
+{
+  "id": "docker_compose_input",
+  "type": "docker_compose",
+  "config": {
+    "project_name": "myproject",
+    "services": [
+      "app",
+      "database",
+      "cache"
+    ],
+    "follow": true,
+    "tail": "100",
+    "timestamps": true,
+    "compose_files": [
+      "./docker-compose.yml",
+      "./docker-compose.override.yml"
+    ],
+    "refresh_interval": "1m"
+  }
+}
+```
+
+Configuration options:
+
+- `project_name`: Docker Compose project name
+- `services`: List of services to collect logs from (empty for all services)
+- `follow`: Whether to follow logs continuously (default: true)
+- `tail`: Number of lines to show from the end of logs (default: "100")
+- `timestamps`: Whether to include timestamps (default: true)
+- `compose_files`: Specific compose files to use
+- `refresh_interval`: How often to refresh container mappings (default: "1m")
 ```
 
 ## License

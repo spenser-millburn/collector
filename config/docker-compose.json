@@ -1,0 +1,76 @@
+{
+  "system": {
+    "id": "observability-collector",
+    "version": "1.0.0",
+    "log_level": "INFO"
+  },
+  "plugins": {
+    "inputs": [
+      {
+        "id": "docker_compose_input",
+        "type": "docker_compose",
+        "config": {
+          "project_name": "collector",
+          "services": [
+            "log_generator"
+          ],
+          "follow": true,
+          "tail": "100",
+          "timestamps": true,
+          "compose_files": [
+            "./docker-compose.yml"
+          ],
+          "refresh_interval": "1m"
+        }
+      }
+    ],
+    "processors": [
+      {
+        "id": "log_parser",
+        "type": "parser",
+        "config": {
+          "patterns": [
+            "^(?P<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.\\d+Z) (?P<level>[A-Z]+) (?P<message>.*)$",
+            "^(?P<level>[A-Z]+)\\s+(?P<timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\\s+(?P<message>.*)$",
+            "^(?P<message>.*)$"
+          ]
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "id": "stdout_output",
+        "type": "stdout",
+        "config": {
+          "colorize": true,
+          "format": "text"
+        }
+      },
+      {
+        "id": "file_output",
+        "type": "file",
+        "config": {
+          "output_dir": "./output",
+          "rotate_interval": "1h",
+          "filename_pattern": "${service}-%Y%m%d-%H.log"
+        }
+      }
+    ]
+  },
+  "pipelines": {
+    "logs": {
+      "inputs": ["docker_compose_input"],
+      "processors": ["log_parser"],
+      "outputs": ["stdout_output", "file_output"]
+    },
+    "metrics": {
+      "inputs": [],
+      "processors": [],
+      "outputs": ["stdout_output"]
+    }
+  },
+  "buffer": {
+    "max_size": 1000,
+    "flush_interval": "1s"
+  }
+}

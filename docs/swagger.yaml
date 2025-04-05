@@ -1,0 +1,427 @@
+info:
+  contact: {}
+paths:
+  /buffers:
+    get:
+      consumes:
+      - application/json
+      description: Get information about all buffers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get all buffers
+      tags:
+      - buffers
+  /buffers/{name}:
+    get:
+      consumes:
+      - application/json
+      description: Get information about a specific buffer
+      parameters:
+      - description: Buffer name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get buffer by name
+      tags:
+      - buffers
+  /buffers/{name}/flush:
+    post:
+      consumes:
+      - application/json
+      description: Flush a specific buffer
+      parameters:
+      - description: Buffer name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Flush a buffer
+      tags:
+      - buffers
+  /config:
+    get:
+      consumes:
+      - application/json
+      description: Get the current collector configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get configuration
+      tags:
+      - config
+    put:
+      consumes:
+      - application/json
+      description: Update the collector configuration
+      parameters:
+      - description: New configuration
+        in: body
+        name: config
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update configuration
+      tags:
+      - config
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Check if the API is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - system
+  /plugins:
+    get:
+      consumes:
+      - application/json
+      description: Get information about all registered plugins
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get all plugins
+      tags:
+      - plugins
+  /plugins/{type}:
+    get:
+      consumes:
+      - application/json
+      description: Get information about plugins of a specific type
+      parameters:
+      - description: Plugin type (input, processor, output)
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get plugins by type
+      tags:
+      - plugins
+  /plugins/{type}/{name}:
+    get:
+      consumes:
+      - application/json
+      description: Get information about a specific plugin
+      parameters:
+      - description: Plugin type (input, processor, output)
+        in: path
+        name: type
+        required: true
+        type: string
+      - description: Plugin name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get plugin by name
+      tags:
+      - plugins
+  /plugins/{type}/{name}/restart:
+    post:
+      consumes:
+      - application/json
+      description: Restart a specific plugin
+      parameters:
+      - description: Plugin type (input, processor, output)
+        in: path
+        name: type
+        required: true
+        type: string
+      - description: Plugin name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Restart a plugin
+      tags:
+      - plugins
+  /plugins/{type}/{name}/start:
+    post:
+      consumes:
+      - application/json
+      description: Start a specific plugin
+      parameters:
+      - description: Plugin type (input, processor, output)
+        in: path
+        name: type
+        required: true
+        type: string
+      - description: Plugin name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Start a plugin
+      tags:
+      - plugins
+  /plugins/{type}/{name}/stop:
+    post:
+      consumes:
+      - application/json
+      description: Stop a specific plugin
+      parameters:
+      - description: Plugin type (input, processor, output)
+        in: path
+        name: type
+        required: true
+        type: string
+      - description: Plugin name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stop a plugin
+      tags:
+      - plugins
+  /restart:
+    post:
+      consumes:
+      - application/json
+      description: Restart the observability collector
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Restart collector
+      tags:
+      - control
+  /start:
+    post:
+      consumes:
+      - application/json
+      description: Start the observability collector
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Start collector
+      tags:
+      - control
+  /status:
+    get:
+      consumes:
+      - application/json
+      description: Get the status of the collector and all its components
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get system status
+      tags:
+      - system
+  /stop:
+    post:
+      consumes:
+      - application/json
+      description: Stop the observability collector
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Stop collector
+      tags:
+      - control
+swagger: "2.0"

@@ -1,0 +1,4 @@
+services:
+  log_generator:
+    image: busybox
+    command: /bin/sh -c "while true; do echo 'Log entry:' `date`; sleep 1; done"

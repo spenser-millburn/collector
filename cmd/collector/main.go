@@ -182,6 +182,17 @@ func registerPlugins(c *core.Core) error {
 	
 	fileInput.Configure(fileInputConfig)
 	
+	// Create and configure Docker Compose input plugin
+	dockerComposeInput := inputs.NewDockerComposeInput("docker_compose_input")
+	dockerComposeConfig := map[string]interface{}{
+		"project_name": "",
+		"services":     []interface{}{},
+		"follow":       true,
+		"tail":         "100",
+		"timestamps":   true,
+	}
+	dockerComposeInput.Configure(dockerComposeConfig)
+	
 	// Create processor plugins
 	parser := processors.NewParser("log_parser")
 	
@@ -215,6 +226,10 @@ func registerPlugins(c *core.Core) error {
 	
 	// Register plugins with core
 	if err := c.RegisterPlugin(fileInput); err != nil {
+		return err
+	}
+	
+	if err := c.RegisterPlugin(dockerComposeInput); err != nil {
 		return err
 	}
 	
