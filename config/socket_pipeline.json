@@ -1,0 +1,32 @@
+{
+  "socket_input": {
+    "enabled": true,
+    "protocol": "tcp",
+    "address": "localhost:8888",
+    "buffer_size": 4096
+  },
+  "file_input": {
+    "enabled": false,
+    "paths": []
+  },
+  "docker_compose_input": {
+    "enabled": false
+  },
+  "log_parser": {
+    "patterns": [
+      "^(?P<timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}) - (?P<message>.*)$",
+      "^(?P<message>.*)$"
+    ]
+  },
+  "stdout_output": {
+    "format": "text",
+    "colorize": true
+  },
+  "pipelines": {
+    "logs": {
+      "inputs": ["socket_input"],
+      "processors": ["log_parser"],
+      "outputs": ["stdout_output"]
+    }
+  }
+}

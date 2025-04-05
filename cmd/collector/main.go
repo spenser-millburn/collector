@@ -46,12 +46,12 @@ func main() {
 	rootCmd.PersistentFlags().BoolVar(&colorize, "color", false, "Colorize stdout output")
 	rootCmd.PersistentFlags().BoolVar(&jsonFormat, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&oneShot, "one-shot", false, "Process files once and exit")
-	
+
 	// API server flags
-	rootCmd.PersistentFlags().BoolVar(&apiEnabled, "api", true, "Enable the API server")
+	rootCmd.PersistentFlags().BoolVar(&apiEnabled, "api", false, "Enable the API server")
 	rootCmd.PersistentFlags().IntVar(&apiPort, "api-port", 8080, "API server port")
 	rootCmd.PersistentFlags().StringVar(&apiHost, "api-host", "localhost", "API server host")
-	
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -69,7 +69,7 @@ func runCollector(cmd *cobra.Command, args []string) {
 		fmt.Println("Failed to initialize core system")
 		os.Exit(1)
 	}
-	
+
 	// Load configuration if provided
 	if configFile != "" {
 		configManager := c.GetConfigManager()
@@ -89,77 +89,19 @@ func runCollector(cmd *cobra.Command, args []string) {
 	}
 
 	// Start the core system
-	fmt.Println("Starting core system...")
-	
-	// Get all registered plugins for debug
-	fmt.Println("Registered plugins:")
-	if registry, exists := c.GetComponent("plugin_registry"); exists {
-		if pluginRegistry, ok := registry.(*core.PluginRegistry); ok {
-			for _, plugin := range pluginRegistry.GetAllPlugins() {
-				fmt.Printf("- %s (type: %s, status: %s)\n", plugin.ID(), plugin.GetType(), plugin.GetStatus())
-			}
-		}
-	}
-	
 	if !c.Start() {
 		fmt.Println("Failed to start core system")
-		
-		// Try to get status of all registered plugins
-		for _, pluginType := range []string{"input", "processor", "output"} {
-			fmt.Printf("Checking %s plugins status:\n", pluginType)
-			
-			// Get all plugins of this type and check status
-			if registry, exists := c.GetComponent("plugin_registry"); exists {
-				if pluginRegistry, ok := registry.(*core.PluginRegistry); ok {
-					var plugins []model.Plugin
-					
-					switch pluginType {
-					case "input":
-						for _, p := range pluginRegistry.GetInputPlugins() {
-							plugins = append(plugins, p)
-						}
-					case "processor":
-						for _, p := range pluginRegistry.GetProcessorPlugins() {
-							plugins = append(plugins, p)
-						}
-					case "output":
-						for _, p := range pluginRegistry.GetOutputPlugins() {
-							plugins = append(plugins, p)
-						}
-					}
-					
-					if len(plugins) == 0 {
-						fmt.Printf("  No %s plugins registered\n", pluginType)
-						continue
-					}
-					
-					for _, plugin := range plugins {
-						fmt.Printf("  - %s status: %s\n", plugin.ID(), plugin.GetStatus())
-					}
-				}
-			}
-		}
-		
-		// Check core components status
-		fmt.Println("Core components status:")
-		components := []string{"event_bus", "plugin_registry", "data_pipeline", "buffer_manager", "config_manager", "health_monitor", "core"}
-		for _, compID := range components {
-			if comp, exists := c.GetComponent(compID); exists {
-				fmt.Printf("  - %s: %s\n", compID, comp.GetStatus())
-			}
-		}
-		
 		os.Exit(1)
 	}
 
 	fmt.Println("Collector is running. Press Ctrl+C to stop.")
-	
+
 	// Start API server if enabled
 	var apiServer *api.API
 	if apiEnabled {
 		// Initialize API with the core instance
 		apiServer = api.NewAPI(c, apiPort, apiHost)
-		
+
 		// Start the API server in a goroutine
 		go func() {
 			fmt.Printf("Starting API server at %s:%d\n", apiHost, apiPort)
@@ -175,7 +117,7 @@ func runCollector(cmd *cobra.Command, args []string) {
 
 	// Wait for shutdown signal
 	<-sigs
-	
+
 	// Shutdown API server if it was started
 	if apiServer != nil {
 		fmt.Println("Shutting down API server...")
@@ -204,35 +146,30 @@ func configurePipeline(c *core.Core) error {
 	if pipeline == nil {
 		return fmt.Errorf("failed to get data pipeline component")
 	}
-	
+
 	// Check if we have a config file with pipeline definitions
 	configManager := c.GetConfigManager()
-	
+
 	if configManager != nil {
 		pipelines, ok := configManager.GetConfig("pipelines", nil).(map[string]interface{})
 		if ok {
-			fmt.Println("Found pipeline configuration in config file")
-			
 			// Configure each pipeline
 			for pipelineType, pipelineConfig := range pipelines {
 				config, ok := pipelineConfig.(map[string]interface{})
 				if !ok {
 					continue
 				}
-				
-				fmt.Printf("Configuring pipeline type: %s\n", pipelineType)
-				
+
 				// Get processors for this pipeline
 				var processorIDs []string
 				if processors, ok := config["processors"].([]interface{}); ok {
 					for _, processorID := range processors {
 						if id, ok := processorID.(string); ok {
 							processorIDs = append(processorIDs, id)
-							fmt.Printf("  Adding processor: %s\n", id)
 						}
 					}
 				}
-				
+
 				// Create the pipeline
 				var telemetryType model.TelemetryType
 				switch pipelineType {
@@ -245,60 +182,44 @@ func configurePipeline(c *core.Core) error {
 				default:
 					continue
 				}
-				
+
 				if len(processorIDs) > 0 {
 					if err := pipeline.CreatePipeline(telemetryType, processorIDs); err != nil {
 						return fmt.Errorf("failed to create %s pipeline: %w", pipelineType, err)
 					}
-					fmt.Printf("Created %s pipeline with %d processors\n", pipelineType, len(processorIDs))
-				} else {
-					fmt.Printf("No processors specified for %s pipeline\n", pipelineType)
 				}
 			}
-			
+
 			return nil
-		} else {
-			fmt.Println("No pipeline configuration found in config file, using default")
 		}
 	}
-	
+
 	// If no pipeline configuration was found, configure a simple log pipeline
-	fmt.Println("Creating default log pipeline with log_parser")
 	err := pipeline.CreatePipeline(model.LogTelemetryType, []string{"log_parser"})
 	if err != nil {
 		return fmt.Errorf("failed to create log pipeline: %w", err)
 	}
-	
+
 	return nil
 }
 
 func registerPlugins(c *core.Core) error {
-	configManager := c.GetConfigManager()
-	
 	// Create input plugins
 	fileInput := inputs.NewFileInput("file_input")
-	
+
 	// Configure file input
 	fileInputConfig := map[string]interface{}{
 		"paths": []interface{}{},
-		"enabled": inputFile != "",  // Only enable if input file is provided
 	}
-	
-	// Override with config file if available
-	if configFile != "" && configManager != nil {
-		if fileConfig, ok := configManager.GetConfig("file_input", nil).(map[string]interface{}); ok {
-			// Merge config
-			for k, v := range fileConfig {
-				fileInputConfig[k] = v
-			}
-			fmt.Println("Using file_input configuration from config file")
-		}
-	} else if inputFile != "" {
+
+	if inputFile != "" {
 		fileInputConfig["paths"] = []interface{}{inputFile}
+	} else {
+		fileInputConfig["paths"] = []interface{}{""}
 	}
-	
+
 	fileInput.Configure(fileInputConfig)
-	
+
 	// Create and configure Docker Compose input plugin
 	dockerComposeInput := inputs.NewDockerComposeInput("docker_compose_input")
 	dockerComposeConfig := map[string]interface{}{
@@ -307,46 +228,12 @@ func registerPlugins(c *core.Core) error {
 		"follow":       true,
 		"tail":         "100",
 		"timestamps":   true,
-		"enabled":      false, // Disabled by default
 	}
-	
-	// Override with config file if available
-	if configFile != "" && configManager != nil {
-		if dockerConfig, ok := configManager.GetConfig("docker_compose_input", nil).(map[string]interface{}); ok {
-			// Merge config
-			for k, v := range dockerConfig {
-				dockerComposeConfig[k] = v
-			}
-			fmt.Println("Using docker_compose_input configuration from config file")
-		}
-	}
-	
 	dockerComposeInput.Configure(dockerComposeConfig)
-	
-	// Create and configure Socket input plugin
-	socketInput := inputs.NewSocketInput("socket_input")
-	socketConfig := map[string]interface{}{
-		"protocol": "tcp",
-		"address":  "localhost:8888",
-		"enabled":  true, // Enabled by default
-	}
-	
-	// Override with config file if available
-	if configFile != "" && configManager != nil {
-		if socketConfig_, ok := configManager.GetConfig("socket_input", nil).(map[string]interface{}); ok {
-			// Merge config
-			for k, v := range socketConfig_ {
-				socketConfig[k] = v
-			}
-			fmt.Println("Using socket_input configuration from config file")
-		}
-	}
-	
-	socketInput.Configure(socketConfig)
-	
+
 	// Create processor plugins
 	parser := processors.NewParser("log_parser")
-	
+
 	// Configure parser
 	parserConfig := map[string]interface{}{
 		"patterns": []interface{}{
@@ -356,79 +243,46 @@ func registerPlugins(c *core.Core) error {
 			`^(?P<message>.*)$`,
 		},
 	}
-	
-	// Override with config file if available
-	if configFile != "" && configManager != nil {
-		if parserConfig_, ok := configManager.GetConfig("log_parser", nil).(map[string]interface{}); ok {
-			// Merge config
-			for k, v := range parserConfig_ {
-				parserConfig[k] = v
-			}
-			fmt.Println("Using log_parser configuration from config file")
-		}
-	}
-	
+
 	parser.Configure(parserConfig)
-	
+
 	// Create output plugins
 	// Use stdout output
 	stdoutOutput := outputs.NewStdoutOutput("stdout_output")
-	
+
 	// Configure stdout output
 	stdoutOutputConfig := map[string]interface{}{
 		"colorize": colorize,
 		"format":   "text",
 	}
-	
+
 	if jsonFormat {
 		stdoutOutputConfig["format"] = "json"
 	}
-	
-	// Override with config file if available
-	if configFile != "" && configManager != nil {
-		if stdoutConfig, ok := configManager.GetConfig("stdout_output", nil).(map[string]interface{}); ok {
-			// Merge config
-			for k, v := range stdoutConfig {
-				stdoutOutputConfig[k] = v
-			}
-			fmt.Println("Using stdout_output configuration from config file")
-		}
-	}
-	
+
 	stdoutOutput.Configure(stdoutOutputConfig)
-	
+
 	// Register plugins with core
-	fmt.Println("Registering plugins with core:")
-	
-	fmt.Println("- Registering file_input")
 	if err := c.RegisterPlugin(fileInput); err != nil {
-		return fmt.Errorf("failed to register file_input: %w", err)
+		return err
 	}
-	
-	fmt.Println("- Registering docker_compose_input")
+
 	if err := c.RegisterPlugin(dockerComposeInput); err != nil {
-		return fmt.Errorf("failed to register docker_compose_input: %w", err)
+		return err
 	}
-	
-	fmt.Println("- Registering socket_input")
-	if err := c.RegisterPlugin(socketInput); err != nil {
-		return fmt.Errorf("failed to register socket_input: %w", err)
-	}
-	
-	fmt.Println("- Registering log_parser")
+
 	if err := c.RegisterPlugin(parser); err != nil {
-		return fmt.Errorf("failed to register log_parser: %w", err)
+		return err
 	}
-	
-	fmt.Println("- Registering stdout_output")
+
 	if err := c.RegisterPlugin(stdoutOutput); err != nil {
-		return fmt.Errorf("failed to register stdout_output: %w", err)
+		return err
 	}
-	
+
 	// Configure pipeline
 	if err := configurePipeline(c); err != nil {
-		return fmt.Errorf("failed to configure pipeline: %w", err)
+		return err
 	}
-	
+
 	return nil
 }
