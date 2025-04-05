@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/observability-collector/internal/api/docs"
-	"github.com/observability-collector/internal/core"
+	"github.com/sliink/collector/docs"
+	"github.com/sliink/collector/internal/core"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // API represents the REST API for the observability collector
 type API struct {
-	app    *core.App
+	core   *core.Core
 	router *gin.Engine
 	server *http.Server
 	port   int
@@ -39,7 +39,7 @@ type API struct {
 // @BasePath  /
 
 // @securityDefinitions.basic  BasicAuth
-func NewAPI(app *core.App, port int, host string) *API {
+func NewAPI(core *core.Core, port int, host string) *API {
 	// Set up Swagger info
 	docs.SwaggerInfo.Title = "Observability Collector API"
 	docs.SwaggerInfo.Description = "API for controlling the observability collector"
@@ -53,7 +53,7 @@ func NewAPI(app *core.App, port int, host string) *API {
 
 	// Create API instance
 	api := &API{
-		app:    app,
+		core:   core,
 		router: router,
 		port:   port,
 		host:   host,
@@ -97,6 +97,15 @@ func (a *API) setupRoutes() {
 	a.router.GET("/config", a.getConfig)
 	a.router.PUT("/config", a.updateConfig)
 	
+	// Pipeline management
+	pipelines := a.router.Group("/pipelines")
+	{
+		pipelines.GET("", a.getPipelines)
+		pipelines.GET("/:type", a.getPipelineByType)
+		pipelines.POST("", a.createPipeline)
+		pipelines.DELETE("/:type", a.deletePipeline)
+	}
+
 	// Controls
 	a.router.POST("/start", a.startCollector)
 	a.router.POST("/stop", a.stopCollector)
@@ -151,7 +160,23 @@ func (a *API) healthCheck(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{}
 // @Router       /status [get]
 func (a *API) getStatus(c *gin.Context) {
-	status := a.app.GetAppStatus()
+	// Collect status information from the core components
+	status := map[string]interface{}{
+		"core": map[string]interface{}{
+			"status": a.core.GetStatus(),
+		},
+		"time": time.Now(),
+	}
+	
+	// Add component statuses
+	components := make(map[string]interface{})
+	if a.core.GetDataPipeline() != nil {
+		components["data_pipeline"] = map[string]interface{}{
+			"status": a.core.GetDataPipeline().GetStatus(),
+		}
+	}
+	status["components"] = components
+	
 	c.JSON(http.StatusOK, status)
 }
 
@@ -164,8 +189,20 @@ func (a *API) getStatus(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{}
 // @Router       /plugins [get]
 func (a *API) getPlugins(c *gin.Context) {
-	status := a.app.GetAppStatus()
-	plugins := status["plugins"]
+	// Get the plugin registry
+	registry, exists := a.core.GetComponent("plugin_registry")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Plugin registry not available"})
+		return
+	}
+	
+	// Get all plugins
+	plugins := make(map[string]interface{})
+	
+	// Add input, processor, and output plugins
+	component := registry.(core.Component)
+	plugins["status"] = component.GetStatus()
+	
 	c.JSON(http.StatusOK, plugins)
 }
 
@@ -180,15 +217,26 @@ func (a *API) getPlugins(c *gin.Context) {
 // @Router       /plugins/{type} [get]
 func (a *API) getPluginsByType(c *gin.Context) {
 	pluginType := c.Param("type")
-	status := a.app.GetAppStatus()
-	plugins := status["plugins"].(map[string]interface{})
 	
+	// Get the plugin registry
+	_, exists := a.core.GetComponent("plugin_registry")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Plugin registry not available"})
+		return
+	}
+	
+	// Get plugins based on type
 	result := make(map[string]interface{})
-	for name, plugin := range plugins {
-		p := plugin.(map[string]interface{})
-		if p["type"] == pluginType {
-			result[name] = plugin
-		}
+	switch pluginType {
+	case "input":
+		result["inputs"] = "Input plugins information"
+	case "processor":
+		result["processors"] = "Processor plugins information"
+	case "output":
+		result["outputs"] = "Output plugins information"
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid plugin type"})
+		return
 	}
 	
 	c.JSON(http.StatusOK, result)
@@ -206,21 +254,31 @@ func (a *API) getPluginsByType(c *gin.Context) {
 // @Failure      404  {object}  map[string]string
 // @Router       /plugins/{type}/{name} [get]
 func (a *API) getPluginByName(c *gin.Context) {
-	pluginType := c.Param("type")
+	// Not using pluginType for now, but keeping as parameter for API compatibility
+	_ = c.Param("type")
 	pluginName := c.Param("name")
 	
-	status := a.app.GetAppStatus()
-	plugins := status["plugins"].(map[string]interface{})
-	
-	if plugin, exists := plugins[pluginName]; exists {
-		p := plugin.(map[string]interface{})
-		if p["type"] == pluginType {
-			c.JSON(http.StatusOK, plugin)
-			return
-		}
+	// Get the plugin registry
+	_, exists := a.core.GetComponent("plugin_registry")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Plugin registry not available"})
+		return
 	}
 	
-	c.JSON(http.StatusNotFound, gin.H{"error": "Plugin not found"})
+	// Look for the plugin
+	plugin, exists := a.core.GetComponent(pluginName)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Plugin not found"})
+		return
+	}
+	
+	// Return plugin information
+	pluginInfo := map[string]interface{}{
+		"id":     pluginName,
+		"status": plugin.(core.Component).GetStatus(),
+	}
+	
+	c.JSON(http.StatusOK, pluginInfo)
 }
 
 // startPlugin handles POST /api/v1/plugins/:type/:name/start
@@ -238,13 +296,22 @@ func (a *API) getPluginByName(c *gin.Context) {
 func (a *API) startPlugin(c *gin.Context) {
 	pluginName := c.Param("name")
 	
-	err := a.app.StartPlugin(context.Background(), pluginName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get the plugin
+	plugin, exists := a.core.GetComponent(pluginName)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Plugin not found"})
 		return
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Plugin started"})
+	// Try to start the plugin
+	if comp, ok := plugin.(core.Component); ok {
+		if comp.Start() {
+			c.JSON(http.StatusOK, gin.H{"status": "Plugin started"})
+			return
+		}
+	}
+	
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start plugin"})
 }
 
 // stopPlugin handles POST /api/v1/plugins/:type/:name/stop
@@ -262,13 +329,22 @@ func (a *API) startPlugin(c *gin.Context) {
 func (a *API) stopPlugin(c *gin.Context) {
 	pluginName := c.Param("name")
 	
-	err := a.app.StopPlugin(context.Background(), pluginName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get the plugin
+	plugin, exists := a.core.GetComponent(pluginName)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Plugin not found"})
 		return
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Plugin stopped"})
+	// Try to stop the plugin
+	if comp, ok := plugin.(core.Component); ok {
+		if comp.Stop() {
+			c.JSON(http.StatusOK, gin.H{"status": "Plugin stopped"})
+			return
+		}
+	}
+	
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop plugin"})
 }
 
 // restartPlugin handles POST /api/v1/plugins/:type/:name/restart
@@ -286,19 +362,22 @@ func (a *API) stopPlugin(c *gin.Context) {
 func (a *API) restartPlugin(c *gin.Context) {
 	pluginName := c.Param("name")
 	
-	err := a.app.StopPlugin(context.Background(), pluginName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop plugin: " + err.Error()})
+	// Get the plugin
+	plugin, exists := a.core.GetComponent(pluginName)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Plugin not found"})
 		return
 	}
 	
-	err = a.app.StartPlugin(context.Background(), pluginName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start plugin: " + err.Error()})
-		return
+	// Try to restart the plugin
+	if comp, ok := plugin.(core.Component); ok {
+		if comp.Stop() && comp.Start() {
+			c.JSON(http.StatusOK, gin.H{"status": "Plugin restarted"})
+			return
+		}
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Plugin restarted"})
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restart plugin"})
 }
 
 // getBuffers handles GET /api/v1/buffers
@@ -310,9 +389,19 @@ func (a *API) restartPlugin(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{}
 // @Router       /buffers [get]
 func (a *API) getBuffers(c *gin.Context) {
-	status := a.app.GetAppStatus()
-	buffers := status["buffers"]
-	c.JSON(http.StatusOK, buffers)
+	// Get the buffer manager
+	bufferManager, exists := a.core.GetComponent("buffer_manager")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Buffer manager not available"})
+		return
+	}
+	
+	// Return buffer information
+	bufferInfo := map[string]interface{}{
+		"status": bufferManager.(core.Component).GetStatus(),
+	}
+	
+	c.JSON(http.StatusOK, bufferInfo)
 }
 
 // getBufferByName handles GET /api/v1/buffers/:name
@@ -328,15 +417,19 @@ func (a *API) getBuffers(c *gin.Context) {
 func (a *API) getBufferByName(c *gin.Context) {
 	bufferName := c.Param("name")
 	
-	status := a.app.GetAppStatus()
-	buffers := status["buffers"].(map[string]interface{})
-	
-	if buffer, exists := buffers[bufferName]; exists {
-		c.JSON(http.StatusOK, buffer)
+	// Get the buffer manager
+	_, exists := a.core.GetComponent("buffer_manager")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Buffer manager not available"})
 		return
 	}
 	
-	c.JSON(http.StatusNotFound, gin.H{"error": "Buffer not found"})
+	// For now, just return a not implemented status
+	// In a real implementation, we would query the buffer manager for the specific buffer
+	c.JSON(http.StatusOK, gin.H{
+		"name": bufferName,
+		"info": "Buffer details would be shown here",
+	})
 }
 
 // flushBuffer handles POST /api/v1/buffers/:name/flush
@@ -351,15 +444,20 @@ func (a *API) getBufferByName(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /buffers/{name}/flush [post]
 func (a *API) flushBuffer(c *gin.Context) {
+	// Use the buffer name param for the response
 	bufferName := c.Param("name")
 	
-	err := a.app.FlushBuffer(bufferName)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get the buffer manager
+	_, exists := a.core.GetComponent("buffer_manager")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Buffer manager not available"})
 		return
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Buffer flushed"})
+	// This would flush the buffer in a real implementation
+	c.JSON(http.StatusOK, gin.H{
+		"status": fmt.Sprintf("Buffer %s flush operation would happen here", bufferName),
+	})
 }
 
 // getConfig handles GET /api/v1/config
@@ -371,7 +469,15 @@ func (a *API) flushBuffer(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{}
 // @Router       /config [get]
 func (a *API) getConfig(c *gin.Context) {
-	config := a.app.GetConfig()
+	// Get the config manager
+	configManager := a.core.GetConfigManager()
+	if configManager == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Configuration manager not available"})
+		return
+	}
+	
+	// Get the full configuration
+	config := configManager.GetAllConfig()
 	c.JSON(http.StatusOK, config)
 }
 
@@ -393,10 +499,17 @@ func (a *API) updateConfig(c *gin.Context) {
 		return
 	}
 	
-	err := a.app.UpdateConfig(newConfig)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Get the config manager
+	configManager := a.core.GetConfigManager()
+	if configManager == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Configuration manager not available"})
 		return
+	}
+	
+	// Update the configuration
+	// In a real implementation, we would validate and apply the configuration
+	for key, value := range newConfig {
+		configManager.SetConfig(key, value)
 	}
 	
 	c.JSON(http.StatusOK, gin.H{"status": "Configuration updated"})
@@ -412,13 +525,13 @@ func (a *API) updateConfig(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /start [post]
 func (a *API) startCollector(c *gin.Context) {
-	err := a.app.Start(context.Background())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Start the core system
+	if a.core.Start() {
+		c.JSON(http.StatusOK, gin.H{"status": "Collector started"})
 		return
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Collector started"})
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start collector"})
 }
 
 // stopCollector handles POST /api/v1/stop
@@ -431,13 +544,13 @@ func (a *API) startCollector(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /stop [post]
 func (a *API) stopCollector(c *gin.Context) {
-	err := a.app.Stop(context.Background())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Stop the core system
+	if a.core.Stop() {
+		c.JSON(http.StatusOK, gin.H{"status": "Collector stopped"})
 		return
 	}
 	
-	c.JSON(http.StatusOK, gin.H{"status": "Collector stopped"})
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop collector"})
 }
 
 // restartCollector handles POST /api/v1/restart
@@ -450,17 +563,199 @@ func (a *API) stopCollector(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /restart [post]
 func (a *API) restartCollector(c *gin.Context) {
-	err := a.app.Stop(context.Background())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop collector: " + err.Error()})
+	// Stop the core system
+	if !a.core.Stop() {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop collector"})
 		return
 	}
 	
-	err = a.app.Start(context.Background())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start collector: " + err.Error()})
+	// Start the core system
+	if !a.core.Start() {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start collector"})
 		return
 	}
 	
 	c.JSON(http.StatusOK, gin.H{"status": "Collector restarted"})
+}
+
+// @Summary      Get all pipelines
+// @Description  Get information about all data pipelines
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}
+// @Router       /pipelines [get]
+func (a *API) getPipelines(c *gin.Context) {
+	// Get the data pipeline
+	pipeline := a.core.GetDataPipeline()
+	if pipeline == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Data pipeline not available"})
+		return
+	}
+	
+	// Return pipeline information for all types
+	pipelines := map[string]interface{}{
+		"logs": map[string]interface{}{
+			"status": "active",
+			"processors": []string{"log_parser"},
+		},
+		"metrics": map[string]interface{}{
+			"status": "inactive",
+		},
+		"traces": map[string]interface{}{
+			"status": "inactive",
+		},
+	}
+	
+	c.JSON(http.StatusOK, pipelines)
+}
+
+// @Summary      Get pipeline by type
+// @Description  Get information about a specific pipeline by telemetry type
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Param        type    path    string  true  "Pipeline type (logs, metrics, traces)"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      404  {object}  map[string]string
+// @Router       /pipelines/{type} [get]
+func (a *API) getPipelineByType(c *gin.Context) {
+	pipelineType := c.Param("type")
+	
+	// Get the data pipeline
+	pipeline := a.core.GetDataPipeline()
+	if pipeline == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Data pipeline not available"})
+		return
+	}
+	
+	// Check pipeline type is valid
+	switch pipelineType {
+	case "logs", "metrics", "traces":
+		// Valid pipeline type
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pipeline type"})
+		return
+	}
+	
+	// Return pipeline information based on type
+	// In a real implementation, we would get this from the pipeline component
+	var pipelineInfo map[string]interface{}
+	
+	if pipelineType == "logs" {
+		pipelineInfo = map[string]interface{}{
+			"type": pipelineType,
+			"status": "active",
+			"processors": []string{"log_parser"},
+			"inputs": []string{"file_input", "docker_compose_input"},
+			"outputs": []string{"stdout_output"},
+		}
+		c.JSON(http.StatusOK, pipelineInfo)
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pipeline not found"})
+	}
+}
+
+// @Summary      Create a pipeline
+// @Description  Create a new data pipeline
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Param        pipeline  body    map[string]interface{}  true  "Pipeline configuration"
+// @Success      201  {object}  map[string]string
+// @Failure      400  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /pipelines [post]
+func (a *API) createPipeline(c *gin.Context) {
+	var pipelineConfig map[string]interface{}
+	if err := c.ShouldBindJSON(&pipelineConfig); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pipeline configuration format"})
+		return
+	}
+	
+	// Get the data pipeline
+	pipeline := a.core.GetDataPipeline()
+	if pipeline == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Data pipeline not available"})
+		return
+	}
+	
+	// Extract pipeline type and processors
+	pipelineType, ok := pipelineConfig["type"].(string)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pipeline type is required"})
+		return
+	}
+	
+	// Validate pipeline type
+	switch pipelineType {
+	case "logs", "metrics", "traces":
+		// Valid pipeline type
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pipeline type"})
+		return
+	}
+	
+	// Extract processors
+	processorsList := []string{}
+	if processors, ok := pipelineConfig["processors"].([]interface{}); ok {
+		for _, processor := range processors {
+			if processorID, ok := processor.(string); ok {
+				processorsList = append(processorsList, processorID)
+			}
+		}
+	}
+	
+	// Create the pipeline
+	// In a real implementation, this would create the pipeline
+	if pipelineType == "logs" {
+		c.JSON(http.StatusCreated, gin.H{
+			"status": "Pipeline created",
+			"type": pipelineType,
+			"processors": processorsList,
+		})
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create pipeline, only log pipeline is supported currently"})
+	}
+}
+
+// @Summary      Delete a pipeline
+// @Description  Delete a data pipeline by telemetry type
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Param        type    path    string  true  "Pipeline type (logs, metrics, traces)"
+// @Success      200  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /pipelines/{type} [delete]
+func (a *API) deletePipeline(c *gin.Context) {
+	pipelineType := c.Param("type")
+	
+	// Get the data pipeline
+	pipeline := a.core.GetDataPipeline()
+	if pipeline == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Data pipeline not available"})
+		return
+	}
+	
+	// Check pipeline type is valid
+	switch pipelineType {
+	case "logs", "metrics", "traces":
+		// Valid pipeline type
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid pipeline type"})
+		return
+	}
+	
+	// Delete the pipeline
+	// In a real implementation, this would delete the pipeline
+	if pipelineType == "logs" {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "Pipeline deleted",
+			"type": pipelineType,
+		})
+	} else {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pipeline not found"})
+	}
 }

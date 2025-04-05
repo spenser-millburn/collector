@@ -1,5 +1,17 @@
+basePath: /
+host: localhost:8080
 info:
-  contact: {}
+  contact:
+    email: support@example.com
+    name: API Support
+    url: http://www.example.com/support
+  description: API for controlling the observability collector
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Observability Collector API
+  version: "1.0"
 paths:
   /buffers:
     get:
@@ -148,6 +160,120 @@ paths:
       summary: Health check
       tags:
       - system
+  /pipelines:
+    get:
+      consumes:
+      - application/json
+      description: Get information about all data pipelines
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get all pipelines
+      tags:
+      - pipelines
+    post:
+      consumes:
+      - application/json
+      description: Create a new data pipeline
+      parameters:
+      - description: Pipeline configuration
+        in: body
+        name: pipeline
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create a pipeline
+      tags:
+      - pipelines
+  /pipelines/{type}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a data pipeline by telemetry type
+      parameters:
+      - description: Pipeline type (logs, metrics, traces)
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete a pipeline
+      tags:
+      - pipelines
+    get:
+      consumes:
+      - application/json
+      description: Get information about a specific pipeline by telemetry type
+      parameters:
+      - description: Pipeline type (logs, metrics, traces)
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get pipeline by type
+      tags:
+      - pipelines
   /plugins:
     get:
       consumes:
@@ -424,4 +550,7 @@ paths:
       summary: Stop collector
       tags:
       - control
+securityDefinitions:
+  BasicAuth:
+    type: basic
 swagger: "2.0"

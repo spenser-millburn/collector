@@ -310,6 +310,20 @@ func (m *ConfigManager) GetConfig(path string, defaultValue interface{}) interfa
 	return m.getConfigInternal(path, defaultValue)
 }
 
+// GetAllConfig returns all configuration values
+func (m *ConfigManager) GetAllConfig() map[string]interface{} {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	
+	// Make a copy of the config to avoid concurrent access issues
+	config := make(map[string]interface{}, len(m.config))
+	for k, v := range m.config {
+		config[k] = v
+	}
+	
+	return config
+}
+
 // SetConfig sets a configuration value
 func (m *ConfigManager) SetConfig(path string, value interface{}) error {
 	// Validate root config updates

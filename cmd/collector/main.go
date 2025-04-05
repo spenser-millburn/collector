@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/sliink/collector/internal/api"
 	"github.com/sliink/collector/internal/core"
 	"github.com/sliink/collector/internal/model"
 	"github.com/sliink/collector/internal/plugin/inputs"
@@ -22,6 +26,9 @@ var (
 	colorize   bool
 	jsonFormat bool
 	oneShot    bool
+	apiEnabled bool
+	apiPort    int
+	apiHost    string
 )
 
 func main() {
@@ -31,6 +38,7 @@ func main() {
 		Run:   runCollector,
 	}
 
+	// Common flags
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
 	rootCmd.PersistentFlags().StringVar(&inputFile, "input-file", "", "Process a specific input file")
 	rootCmd.PersistentFlags().StringVar(&outputDir, "output-dir", "", "Output directory for file output")
@@ -38,7 +46,12 @@ func main() {
 	rootCmd.PersistentFlags().BoolVar(&colorize, "color", false, "Colorize stdout output")
 	rootCmd.PersistentFlags().BoolVar(&jsonFormat, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&oneShot, "one-shot", false, "Process files once and exit")
-
+	
+	// API server flags
+	rootCmd.PersistentFlags().BoolVar(&apiEnabled, "api", true, "Enable the API server")
+	rootCmd.PersistentFlags().IntVar(&apiPort, "api-port", 8080, "API server port")
+	rootCmd.PersistentFlags().StringVar(&apiHost, "api-host", "localhost", "API server host")
+	
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -82,6 +95,21 @@ func runCollector(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Collector is running. Press Ctrl+C to stop.")
+	
+	// Start API server if enabled
+	var apiServer *api.API
+	if apiEnabled {
+		// Initialize API with the core instance
+		apiServer = api.NewAPI(c, apiPort, apiHost)
+		
+		// Start the API server in a goroutine
+		go func() {
+			fmt.Printf("Starting API server at %s:%d\n", apiHost, apiPort)
+			if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
+				fmt.Printf("API server error: %s\n", err)
+			}
+		}()
+	}
 
 	// Setup signal handling for graceful shutdown
 	sigs := make(chan os.Signal, 1)
@@ -89,6 +117,16 @@ func runCollector(cmd *cobra.Command, args []string) {
 
 	// Wait for shutdown signal
 	<-sigs
+	
+	// Shutdown API server if it was started
+	if apiServer != nil {
+		fmt.Println("Shutting down API server...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := apiServer.Stop(ctx); err != nil {
+			fmt.Printf("API server shutdown error: %s\n", err)
+		}
+	}
 
 	fmt.Println("\nShutting down...")
 
