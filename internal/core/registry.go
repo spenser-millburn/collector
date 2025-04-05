@@ -151,3 +151,17 @@ func (r *PluginRegistry) GetOutputPlugins() []model.OutputPlugin {
 	
 	return result
 }
+
+// GetAllPlugins retrieves all registered plugins
+func (r *PluginRegistry) GetAllPlugins() []model.Plugin {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	var result []model.Plugin
+	
+	for _, p := range r.plugins {
+		result = append(result, p)
+	}
+	
+	return result
+}

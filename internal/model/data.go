@@ -109,17 +109,22 @@ func (p *TracePoint) ToMap() map[string]interface{} {
 
 // DataBatch is a collection of data points of the same type
 type DataBatch struct {
-	BatchType TelemetryType
-	Points    []DataPoint
-	Metadata  map[string]interface{}
+	SourceID    string
+	BatchType   TelemetryType
+	Points      []DataPoint
+	Records     []Record
+	Timestamp   time.Time
+	Attributes  map[string]interface{}
 }
 
 // NewDataBatch creates a new data batch of the specified type
 func NewDataBatch(batchType TelemetryType) *DataBatch {
 	return &DataBatch{
-		BatchType: batchType,
-		Points:    make([]DataPoint, 0),
-		Metadata:  make(map[string]interface{}),
+		BatchType:   batchType,
+		Points:      make([]DataPoint, 0),
+		Records:     make([]Record, 0),
+		Timestamp:   time.Now(),
+		Attributes:  make(map[string]interface{}),
 	}
 }
 
@@ -140,9 +145,23 @@ func (b *DataBatch) ToMap() map[string]interface{} {
 		points[i] = point.ToMap()
 	}
 	
+	// Convert records to a simple format
+	recordsData := make([]map[string]interface{}, len(b.Records))
+	for i, record := range b.Records {
+		recordsData[i] = map[string]interface{}{
+			"source":     record.Source,
+			"timestamp":  record.Timestamp,
+			"attributes": record.Attributes,
+			"data":       string(record.RawData), // Convert binary data to string for display
+		}
+	}
+	
 	return map[string]interface{}{
-		"batch_type": b.BatchType,
-		"points":     points,
-		"metadata":   b.Metadata,
+		"source_id":   b.SourceID,
+		"batch_type":  b.BatchType,
+		"timestamp":   b.Timestamp,
+		"points":      points,
+		"records":     recordsData,
+		"attributes":  b.Attributes,
 	}
 }

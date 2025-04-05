@@ -162,6 +162,13 @@ func (d *DockerComposeInput) Collect() []*model.DataBatch {
 	if d.GetStatus() != model.StatusRunning {
 		return nil
 	}
+	
+	// Check if input is enabled
+	enabled, ok := d.Config["enabled"].(bool)
+	if !ok || !enabled {
+		// Skip collection if explicitly disabled
+		return nil
+	}
 
 	// Refresh container mapping if enough time has passed
 	d.refreshContainerMapping()

@@ -5,6 +5,9 @@ import "time"
 // ComponentStatus represents the current status of a component
 type ComponentStatus string
 
+// Status is an alias for ComponentStatus
+type Status = ComponentStatus
+
 const (
 	// StatusUninitialized indicates the component has not been initialized
 	StatusUninitialized ComponentStatus = "UNINITIALIZED"

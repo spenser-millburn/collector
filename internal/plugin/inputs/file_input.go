@@ -63,6 +63,12 @@ func (f *FileInput) Stop() bool {
 
 // Validate checks if the file input is properly configured
 func (f *FileInput) Validate() bool {
+	// Check if explicitly disabled
+	if enabled, ok := f.Config["enabled"].(bool); ok && !enabled {
+		// Disabled plugins are valid
+		return true
+	}
+	
 	// Check if paths are configured
 	if paths, ok := f.Config["paths"].([]interface{}); !ok || len(paths) == 0 {
 		return false
@@ -74,6 +80,13 @@ func (f *FileInput) Validate() bool {
 // Collect gathers log data from files
 func (f *FileInput) Collect() []*model.DataBatch {
 	if f.GetStatus() != model.StatusRunning {
+		return nil
+	}
+	
+	// Check if input is enabled
+	enabled, ok := f.Config["enabled"].(bool)
+	if !ok || !enabled {
+		// Skip collection if explicitly disabled
 		return nil
 	}
 

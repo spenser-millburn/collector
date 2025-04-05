@@ -72,7 +72,8 @@ func (p *Parser) Process(batch *model.DataBatch) *model.DataBatch {
 	}
 
 	resultBatch := model.NewDataBatch(model.LogTelemetryType)
-	resultBatch.Metadata = batch.Metadata
+	resultBatch.Attributes = batch.Attributes
+	resultBatch.SourceID = batch.SourceID
 
 	for _, point := range batch.Points {
 		logPoint, ok := point.(*model.LogPoint)
